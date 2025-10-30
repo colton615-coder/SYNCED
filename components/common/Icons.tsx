@@ -129,3 +129,9 @@ export const VideoCameraIcon: React.FC = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
     </svg>
 );
+
+export const SparkleIcon: React.FC = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2 2m-2-2h2m-4 0h-2M15 9l2 2m-2-2h2m-4 0h-2M13 17l2 2m-2-2h2m-4 0h-2M12 11V9m0 2h2m-2 0H10m0 4v2m0-2h2m-2 0H10" />
+  </svg>
+);

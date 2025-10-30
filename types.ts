@@ -104,6 +104,7 @@ export interface JournalEntry {
   prompt: string; // The prompt that was answered
   snippet: string; // Short preview of the entry
   fullText: string; // The complete user's response
+  aiResponse?: string; // AI Therapist's response
 }
 
 export type ShoppingCategory =
@@ -153,4 +154,7 @@ export interface EducationResource {
   status: EducationResourceStatus;
   description?: string;
   tags?: string[];
+  aiSummary?: string; // AI Assistant's summary
+  isSummarizing?: boolean; // Whether the AI is currently summarizing this resource
+  summaryError?: string; // Error message if summarization fails
 }
