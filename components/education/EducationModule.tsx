@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Module from '../common/Module';
-import { AcademicCapIcon, BookOpenIcon, LinkIcon, PencilIcon, PlusCircleIcon, TrashIcon, VideoCameraIcon, SparkleIcon, ChevronDownIcon } from '../common/Icons'; // Import SparkleIcon and ChevronDownIcon
+import { AcademicCapIcon, BookOpenIcon, LinkIcon, PencilIcon, PlusCircleIcon, TrashIcon, VideoCameraIcon } from '../common/Icons';
 import { EducationResource, EducationResourceStatus } from '../../types';
 import EducationResourceForm from './EducationResourceForm';
-import { GoogleGenAI } from '@google/genai'; // Import GoogleGenAI
 
 const LOCAL_STORAGE_KEY = 'lifesyncd_education_resources';
 
@@ -13,7 +12,6 @@ const EducationModule: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingResource, setEditingResource] = useState<EducationResource | null>(null);
   const [filter, setFilter] = useState<EducationResourceStatus | 'All'>('All');
-  const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set()); // State for expanded AI summaries
 
   // Load resources from local storage on initial mount
   useEffect(() => {
@@ -57,47 +55,6 @@ const EducationModule: React.FC = () => {
     setShowForm(false);
     setEditingResource(null);
   }, [editingResource]);
-  
-  const handleSummarizeResource = useCallback(async (resourceId: string, resourceTitle: string) => {
-    setResources(prev => prev.map(res => 
-      res.id === resourceId ? { ...res, isSummarizing: true, summaryError: undefined } : res
-    ));
-
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `Based on your general knowledge, provide a concise summary (around 80-120 words) of an educational resource titled '${resourceTitle}'. Focus on key concepts and takeaways. Do not attempt to browse the internet or access external content.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ parts: [{ text: prompt }] }],
-      });
-
-      const aiSummaryText = response.text;
-
-      setResources(prev => prev.map(res => 
-        res.id === resourceId ? { ...res, aiSummary: aiSummaryText, isSummarizing: false } : res
-      ));
-      setExpandedSummaries(prev => new Set(prev).add(resourceId)); // Expand the summary when generated
-
-    } catch (error) {
-      console.error('Error generating AI summary:', error);
-      setResources(prev => prev.map(res => 
-        res.id === resourceId ? { ...res, summaryError: 'Failed to generate summary.', isSummarizing: false } : res
-      ));
-    }
-  }, []);
-
-  const toggleSummaryExpansion = useCallback((resourceId: string) => {
-    setExpandedSummaries(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(resourceId)) {
-        newSet.delete(resourceId);
-      } else {
-        newSet.add(resourceId);
-      }
-      return newSet;
-    });
-  }, []);
   
   const filteredResources = useMemo(() => {
     if (filter === 'All') return resources;
@@ -183,52 +140,7 @@ const EducationModule: React.FC = () => {
               {resource.description && (
                 <p className="text-sm text-gray-300 mb-3 ml-9 line-clamp-2">{resource.description}</p>
               )}
-
-              {resource.summaryError && (
-                <p className="text-red-400 text-sm mb-2 ml-9">{resource.summaryError}</p>
-              )}
-
-              {/* AI Summary Section */}
-              {resource.aiSummary && (
-                <div className="mt-4 pt-3 border-t border-slate-700/50">
-                  <button
-                    onClick={() => toggleSummaryExpansion(resource.id)}
-                    className="flex items-center justify-between w-full text-gray-300 hover:text-white transition-colors duration-200"
-                    aria-expanded={expandedSummaries.has(resource.id)}
-                    aria-controls={`ai-summary-${resource.id}`}
-                  >
-                    <span className="font-medium text-sm flex items-center">
-                      <SparkleIcon className="h-4 w-4 mr-2 text-yellow-400" /> AI Summary
-                    </span>
-                    <ChevronDownIcon className={`h-5 w-5 transition-transform duration-200 ${expandedSummaries.has(resource.id) ? 'rotate-180' : ''}`} />
-                  </button>
-                  {expandedSummaries.has(resource.id) && (
-                    <div id={`ai-summary-${resource.id}`} className="mt-3 p-3 bg-purple-900/20 border border-purple-700/50 rounded-lg text-sm text-gray-200 whitespace-pre-wrap">
-                      {resource.aiSummary}
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="flex justify-end space-x-2 mt-4 pt-3 border-t border-slate-700/50">
-                {!resource.aiSummary && !resource.isSummarizing && (
-                  <button
-                    onClick={() => handleSummarizeResource(resource.id, resource.title)}
-                    className="flex items-center bg-yellow-600/70 hover:bg-yellow-700/80 text-white text-sm font-bold py-2 px-3 rounded-lg transition-colors duration-200"
-                    aria-label={`Summarize ${resource.title} with AI`}
-                  >
-                    <SparkleIcon className="h-4 w-4 mr-1" /> Summarize with AI
-                  </button>
-                )}
-                {resource.isSummarizing && (
-                  <span className="flex items-center text-yellow-400 text-sm px-3 py-2">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Summarizing...
-                  </span>
-                )}
                 <a 
                   href={resource.url} 
                   target="_blank" 

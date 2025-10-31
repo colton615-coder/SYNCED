@@ -1,196 +1,279 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { GoogleGenAI } from "@google/genai";
 import Module from '../common/Module';
-import { BookOpenIcon } from '../common/Icons';
+import { BookOpenIcon, SparklesIcon, PlusCircleIcon, ChevronLeftIcon } from '../common/Icons';
 import { JournalEntry } from '../../types';
 import { dailyJournalPrompts } from '../../data/journalPrompts';
-import { GoogleGenAI } from '@google/genai'; // Import GoogleGenAI
 
 const LOCAL_STORAGE_KEY_ENTRIES = 'lifesyncd_journal_entries';
 const LOCAL_STORAGE_KEY_DISMISS = 'lifesyncd_journal_dismiss_date';
 
+type JournalView = 'LIST' | 'ENTRY';
+
+// --- Sub-component for the Entry Editor/Viewer ---
+interface JournalEntryViewProps {
+  entry: Partial<JournalEntry>;
+  onSave: (updatedEntry: Partial<JournalEntry>) => void;
+  onBack: () => void;
+}
+
+const JournalEntryView: React.FC<JournalEntryViewProps> = ({ entry, onSave, onBack }) => {
+  const [fullText, setFullText] = useState(entry.fullText || '');
+  const [title, setTitle] = useState(entry.title || '');
+  const [currentReflection, setCurrentReflection] = useState(entry.aiReflection || '');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState('');
+
+  const handleSave = () => {
+    if (!fullText.trim()) {
+      setValidationError('Your journal entry cannot be empty.');
+      return;
+    }
+    const entryToSave = {
+      ...entry,
+      title: entry.prompt ? entry.title : title.trim(),
+      fullText: fullText.trim(),
+      snippet: fullText.trim().substring(0, 100) + (fullText.trim().length > 100 ? '...' : ''),
+    };
+    onSave(entryToSave);
+  };
+
+  const handleGetReflection = useCallback(async () => {
+    if (!entry.id || isGenerating) return;
+
+    setIsGenerating(true);
+    setGenerationError(null);
+    setCurrentReflection('');
+    let streamedReflection = '';
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const systemInstruction = "You are a supportive, empathetic journal assistant... Your primary function is to facilitate the user's own reflection. Keep your response concise, around 3-4 paragraphs. Start your response with a warm greeting.";
+
+      const responseStream = await ai.models.generateContentStream({
+        model: 'gemini-2.5-flash',
+        contents: [{ parts: [{ text: fullText }] }],
+        config: { systemInstruction },
+      });
+
+      for await (const chunk of responseStream) {
+        streamedReflection += chunk.text;
+        setCurrentReflection(streamedReflection);
+      }
+
+      onSave({ ...entry, aiReflection: streamedReflection });
+    } catch (error) {
+      console.error("Error generating AI reflection:", error);
+      setGenerationError("Sorry, I couldn't generate a reflection. Please try again later.");
+      setCurrentReflection('');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [entry, fullText, isGenerating, onSave]);
+
+  const moduleTitle = entry.prompt ? "Daily Prompt" : (entry.id ? (entry.title || `Entry from ${entry.date}`) : "New Freeform Entry");
+
+  return (
+    <Module title={moduleTitle} icon={<BookOpenIcon />}>
+      <div className="flex flex-col h-full">
+        <button onClick={onBack} className="flex items-center text-purple-400 hover:text-purple-300 mb-4 transition-colors duration-200 self-start">
+          <ChevronLeftIcon />
+          <span className="ml-1">Back to Journal</span>
+        </button>
+
+        {entry.prompt && (
+          <p className="text-gray-200 text-lg font-semibold mb-3 flex-shrink-0 leading-relaxed">
+            "{entry.prompt}"
+          </p>
+        )}
+
+        {!entry.prompt && !entry.id && (
+           <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title (optional)"
+            className="w-full p-3 mb-3 rounded-lg bg-slate-700/70 border border-slate-600 focus:ring-purple-500 focus:border-purple-500 text-gray-100 placeholder-gray-400 text-lg font-semibold"
+          />
+        )}
+
+        <div className="flex-grow flex flex-col min-h-0">
+          <textarea
+            value={fullText}
+            onChange={(e) => { setFullText(e.target.value); setValidationError(''); }}
+            placeholder="Start writing your thoughts..."
+            className="w-full h-full p-3 rounded-lg bg-slate-700/70 border border-slate-600 focus:ring-purple-500 focus:border-purple-500 text-gray-100 placeholder-gray-400 text-base custom-scrollbar resize-none min-h-[150px]"
+            aria-label="Journal entry text input"
+          />
+          {validationError && (
+            <p className="text-red-400 text-sm mt-2 flex-shrink-0">{validationError}</p>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-col space-y-4">
+           {/* Save button appears for new entries or when text is edited */}
+           {( !entry.id || (entry.fullText !== fullText) || (entry.title !== title) ) && (
+            <button
+              onClick={handleSave}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
+            >
+              {entry.id ? 'Update Entry' : 'Save Entry'}
+            </button>
+           )}
+
+          {/* AI Reflection section */}
+          {entry.id && (
+            <>
+              {(isGenerating || currentReflection) && (
+                 <div className="bg-slate-700/30 p-4 rounded-lg border border-slate-600/50">
+                    <div className="flex items-center text-purple-300 mb-2">
+                        <SparklesIcon className={`h-5 w-5 mr-2 ${isGenerating ? 'animate-pulse' : ''}`} />
+                        <h4 className="font-semibold">AI Reflection</h4>
+                    </div>
+                    <p className="text-gray-300 whitespace-pre-wrap">{currentReflection || "Reflecting on your thoughts..."}{isGenerating && <span className="animate-pulse">|</span>}</p>
+                 </div>
+              )}
+              
+              {!isGenerating && !currentReflection && (
+                 <button
+                    onClick={handleGetReflection}
+                    className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
+                  >
+                    <SparklesIcon className="h-5 w-5 mr-2" />
+                    Get AI Reflection
+                  </button>
+              )}
+
+              {generationError && !isGenerating && (
+                <p className="text-red-400 text-sm mt-2 text-center">{generationError}</p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </Module>
+  );
+};
+
+
+// --- Main JournalModule Component ---
 const JournalModule: React.FC = () => {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
-  const [entryText, setEntryText] = useState('');
   const [isDismissed, setIsDismissed] = useState(false);
-  const [validationError, setValidationError] = useState('');
-  const [isLoadingAIResponse, setIsLoadingAIResponse] = useState(false); // New state for AI loading
-  const [aiResponseError, setAiResponseError] = useState<string | null>(null); // New state for AI error
+  const [view, setView] = useState<JournalView>('LIST');
+  const [activeEntry, setActiveEntry] = useState<Partial<JournalEntry> | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = new Date().toISOString().slice(0, 10);
 
-  // Load entries and dismissal state from local storage on initial mount
   useEffect(() => {
     const storedEntries = localStorage.getItem(LOCAL_STORAGE_KEY_ENTRIES);
-    if (storedEntries) {
-      setJournalEntries(JSON.parse(storedEntries));
-    }
+    if (storedEntries) setJournalEntries(JSON.parse(storedEntries));
     const dismissedDate = localStorage.getItem(LOCAL_STORAGE_KEY_DISMISS);
-    if (dismissedDate === today) {
-      setIsDismissed(true);
-    }
+    if (dismissedDate === today) setIsDismissed(true);
   }, [today]);
 
-  // Save entries to local storage whenever they change
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_ENTRIES, JSON.stringify(journalEntries));
   }, [journalEntries]);
 
-  const entryForToday = useMemo(() => {
-    return journalEntries.find(entry => entry.date === today);
-  }, [journalEntries, today]);
-
   const dailyPrompt = useMemo(() => {
     const date = new Date();
-    // Simple way to get a deterministic index for the day
     const dayOfYear = Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 0).getTime()) / 1000 / 60 / 60 / 24);
-    const randomIndex = dayOfYear % dailyJournalPrompts.length;
-    return dailyJournalPrompts[randomIndex];
-  }, [today]); // Reruns only when the day changes
-
-  const startAITherapySession = useCallback(async (fullText: string, entryId: string) => {
-    setIsLoadingAIResponse(true);
-    setAiResponseError(null);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `You are an empathetic and non-judgmental AI therapist. Read the following journal entry and provide a supportive, reflective, and constructive response. Focus on active listening, validation, and gently encouraging self-reflection. Do not give direct advice or medical diagnoses. Keep your response concise, around 100-150 words.
-
-User's journal entry:
-${fullText}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', // Using pro for more nuanced responses
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          temperature: 0.8,
-          topK: 40,
-          topP: 0.95,
-        }
-      });
-
-      const aiResponseText = response.text;
-
-      setJournalEntries(prevEntries => prevEntries.map(entry =>
-        entry.id === entryId ? { ...entry, aiResponse: aiResponseText } : entry
-      ));
-
-    } catch (error) {
-      console.error('Error generating AI response:', error);
-      setAiResponseError('Failed to get AI response. Please try again later.');
-    } finally {
-      setIsLoadingAIResponse(false);
-    }
+    return dailyJournalPrompts[dayOfYear % dailyJournalPrompts.length];
   }, []);
 
-
-  const handleSaveEntry = useCallback(async () => {
-    if (!entryText.trim()) {
-      setValidationError('Your journal entry cannot be empty.');
-      return;
-    }
-    setValidationError('');
-
-    const newEntryId = Date.now().toString(); // Generate ID upfront
-    const newEntry: JournalEntry = {
-      id: newEntryId,
-      date: today,
-      prompt: dailyPrompt,
-      fullText: entryText.trim(),
-      snippet: entryText.trim().substring(0, 100) + (entryText.trim().length > 100 ? '...' : ''),
-      aiResponse: undefined, // Initialize as undefined, will be filled by AI
-    };
-    setJournalEntries((prevEntries) => [...prevEntries, newEntry]);
-    setEntryText('');
-    
-    // Start AI session in the background
-    startAITherapySession(newEntry.fullText, newEntryId);
-
-  }, [entryText, today, dailyPrompt, startAITherapySession]);
+  const hasAnsweredPromptToday = useMemo(() => 
+    journalEntries.some(e => e.date === today && e.prompt), 
+  [journalEntries, today]);
 
   const handleDismiss = () => {
     setIsDismissed(true);
     localStorage.setItem(LOCAL_STORAGE_KEY_DISMISS, today);
   };
+
+  const handleSaveOrUpdateEntry = (entryToSave: Partial<JournalEntry>) => {
+    setJournalEntries(prev => {
+      if (entryToSave.id) {
+        return prev.map(e => e.id === entryToSave.id ? { ...e, ...entryToSave } as JournalEntry : e);
+      } else {
+        const newEntry: JournalEntry = {
+          id: Date.now().toString(),
+          date: today,
+          ...entryToSave
+        } as JournalEntry;
+        return [...prev, newEntry];
+      }
+    });
+    setView('LIST');
+    setActiveEntry(null);
+  };
   
-  const headerContent = (
-    <button
-      onClick={handleDismiss}
-      className="text-gray-400 hover:text-white transition-colors duration-200 p-1 rounded-full hover:bg-slate-700"
-      aria-label="Dismiss daily prompt"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-      </svg>
-    </button>
-  );
+  const handleStartPromptEntry = () => {
+    setActiveEntry({ date: today, prompt: dailyPrompt });
+    setView('ENTRY');
+  };
 
+  const handleStartFreeformEntry = () => {
+    setActiveEntry({ date: today });
+    setView('ENTRY');
+  };
+  
+  const handleSelectEntry = (entry: JournalEntry) => {
+    setActiveEntry(entry);
+    setView('ENTRY');
+  };
+
+  if (view === 'ENTRY' && activeEntry) {
+    return (
+      <JournalEntryView 
+        entry={activeEntry}
+        onSave={handleSaveOrUpdateEntry}
+        onBack={() => { setView('LIST'); setActiveEntry(null); }}
+      />
+    );
+  }
+
+  // LIST VIEW
   return (
-    <Module 
-      title="Daily Insight Prompt" 
-      icon={<BookOpenIcon />} 
-      headerContent={!entryForToday && !isDismissed ? headerContent : undefined}
-    >
-      {entryForToday ? (
-        <div>
-          <h3 className="font-semibold text-green-400 mb-2 text-center">Today's entry saved!</h3>
-          <div className="bg-slate-700/30 p-3 rounded-lg border border-slate-600/50">
-             <p className="text-gray-300 italic text-base">"{entryForToday.fullText}"</p> {/* Display full text */}
-             <p className="text-purple-300 text-xs mt-2">From prompt: "{entryForToday.prompt.substring(0, Math.min(entryForToday.prompt.length, 50))}..."</p>
-          </div>
-
-          {isLoadingAIResponse && (
-            <div className="mt-4 p-3 bg-slate-700/30 border border-slate-600/50 rounded-lg text-center text-gray-400 flex items-center justify-center">
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              AI Therapist is thinking...
-            </div>
-          )}
-
-          {aiResponseError && (
-            <p className="text-red-400 text-sm mt-2">{aiResponseError}</p>
-          )}
-
-          {entryForToday.aiResponse && (
-            <div className="mt-4 p-3 bg-purple-900/20 border border-purple-700/50 rounded-lg">
-              <h4 className="font-semibold text-purple-300 mb-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 0A9 9 0 0110.5 20.25h.5m-9.007-11.25H4.5m0 0A8.96 8.96 0 0110.5 4.5h.5M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                AI Therapist's Reflection:
-              </h4>
-              <p className="text-gray-200 italic text-base whitespace-pre-wrap">{entryForToday.aiResponse}</p>
-            </div>
-          )}
-        </div>
-      ) : isDismissed ? (
-        <p className="text-gray-400 text-center py-4">Prompt for today dismissed. See you tomorrow!</p>
-      ) : (
-        <div className="flex flex-col h-full">
-            <p className="text-gray-200 text-lg font-semibold mb-3 flex-shrink-0 leading-relaxed">
-                "{dailyPrompt}"
-            </p>
-            <div className="flex-grow flex flex-col min-h-0">
-                <textarea
-                    value={entryText}
-                    onChange={(e) => { setEntryText(e.target.value); setValidationError(''); }}
-                    placeholder="Start writing your thoughts..."
-                    className="w-full h-full p-3 rounded-lg bg-slate-700/70 border border-slate-600 focus:ring-purple-500 focus:border-purple-500 text-gray-100 placeholder-gray-400 text-base custom-scrollbar resize-none min-h-[120px]"
-                    aria-label="Journal entry text input"
-                ></textarea>
-                 {validationError && (
-                    <p className="text-red-400 text-sm mt-2 flex-shrink-0">{validationError}</p>
-                )}
-            </div>
-            <button
-                onClick={handleSaveEntry}
-                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center text-lg mt-4"
-            >
-                Save Entry
-            </button>
+    <Module title="My Journal" icon={<BookOpenIcon />}>
+      {/* Daily Prompt Card */}
+      {!hasAnsweredPromptToday && !isDismissed && (
+        <div className="bg-slate-700/40 backdrop-blur-md border border-slate-600/60 rounded-xl shadow-lg p-4 mb-6 relative">
+          <button onClick={handleDismiss} className="absolute top-2 right-2 text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-600/50">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+          <h3 className="font-semibold text-purple-300 mb-2">Daily Insight Prompt</h3>
+          <p className="text-gray-200 mb-4">"{dailyPrompt}"</p>
+          <button onClick={handleStartPromptEntry} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+            Write Your Response
+          </button>
         </div>
       )}
+
+      {/* Entries List */}
+      <div className="space-y-3">
+        {journalEntries.length === 0 ? (
+          <p className="text-gray-400 text-center py-4">Your journal is empty. Write your first entry!</p>
+        ) : (
+          journalEntries.slice().reverse().map(entry => (
+            <button key={entry.id} onClick={() => handleSelectEntry(entry)} className="w-full text-left block bg-slate-800/40 backdrop-blur-md border border-slate-700/60 rounded-xl shadow-lg p-4 transition-all duration-300 hover:scale-[1.01] hover:bg-slate-700/50">
+              <p className="text-sm text-gray-400 mb-1">{new Date(entry.date + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              <h4 className="font-bold text-lg text-white mb-2 truncate">{entry.title || entry.prompt}</h4>
+              <p className="text-sm text-gray-300 line-clamp-2">{entry.snippet}</p>
+            </button>
+          ))
+        )}
+      </div>
+
+      <div className="mt-6 pt-4 border-t border-slate-700/50">
+        <button
+          onClick={handleStartFreeformEntry}
+          className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center text-lg"
+        >
+          <PlusCircleIcon className="h-5 w-5 mr-2" /> Create New Freeform Entry
+        </button>
+      </div>
     </Module>
   );
 };

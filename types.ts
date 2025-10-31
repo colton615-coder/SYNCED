@@ -1,4 +1,3 @@
-
 export type ModuleType =
   | 'dashboard'
   | 'calendar'
@@ -101,10 +100,11 @@ export interface CalendarEvent {
 export interface JournalEntry {
   id: string;
   date: string; // YYYY-MM-DD
-  prompt: string; // The prompt that was answered
+  title?: string; // For freeform entries
+  prompt?: string; // The prompt that was answered
   snippet: string; // Short preview of the entry
   fullText: string; // The complete user's response
-  aiResponse?: string; // AI Therapist's response
+  aiReflection?: string; // To store the generated AI reflection
 }
 
 export type ShoppingCategory =
@@ -134,7 +134,7 @@ export interface SubTask {
 }
 
 export interface Project {
-  id: string;
+  id:string;
   name: string;
   description: string;
   status: ProjectStatus;
@@ -154,7 +154,4 @@ export interface EducationResource {
   status: EducationResourceStatus;
   description?: string;
   tags?: string[];
-  aiSummary?: string; // AI Assistant's summary
-  isSummarizing?: boolean; // Whether the AI is currently summarizing this resource
-  summaryError?: string; // Error message if summarization fails
 }
