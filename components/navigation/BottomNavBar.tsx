@@ -43,13 +43,15 @@ const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeModule, setActiveModu
           <button
             key={item.id}
             onClick={() => setActiveModule(item.id)}
-            className={`flex flex-col items-center justify-center flex-1 pt-2 pb-1 transition-colors duration-200 focus:outline-none ${
+            className={`flex flex-col items-center justify-center flex-1 pt-2 pb-1 transition-colors duration-200 focus:outline-none group ${
               activeModule === item.id ? 'text-purple-400' : 'text-gray-400 hover:text-white'
             }`}
             aria-current={activeModule === item.id ? 'page' : undefined}
             aria-label={item.label}
           >
-            {item.icon}
+            <div className={`transition-transform duration-200 ease-in-out ${activeModule === item.id ? 'transform scale-110' : 'group-hover:scale-105'}`}>
+              {item.icon}
+            </div>
             <span className="text-xs mt-1 tracking-tight">{item.label}</span>
           </button>
         ))}

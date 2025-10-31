@@ -2,9 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import Module from '../common/Module';
 import { Habit, HabitTrackingType } from '../../types';
-import { HeartIcon, PencilIcon, TrashIcon } from '../common/Icons'; // Import TrashIcon
+import { HeartIcon, PencilIcon, TrashIcon, FireIcon, CalendarDaysIcon, PlusCircleIcon, MinusCircleIcon } from '../common/Icons';
+import HabitHistoryCalendarModal from './HabitHistoryCalendarModal';
 
 const LOCAL_STORAGE_KEY = 'lifesyncd_habits';
+
+// Helper to get date strings
+const getISODateString = (date: Date): string => date.toISOString().slice(0, 10);
 
 const HabitsModule: React.FC = () => {
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -15,30 +19,40 @@ const HabitsModule: React.FC = () => {
   const [targetCount, setTargetCount] = useState<number>(1);
   const [targetTime, setTargetTime] = useState<number>(15); // in minutes
   const [timeInput, setTimeInput] = useState<string>(''); // For logging time
+  const [viewingHistoryForHabit, setViewingHistoryForHabit] = useState<Habit | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = getISODateString(new Date());
 
-  const resetHabitProgressIfNewDay = (habit: Habit): Habit => {
-    if (habit.lastTrackedDate !== today) {
-      if (habit.trackingType === 'checkbox') {
-        return { ...habit, currentCount: 0, completedToday: false, lastTrackedDate: today };
-      } else if (habit.trackingType === 'time') {
-        return { ...habit, totalTimeLogged: 0, completedToday: false, lastTrackedDate: today };
-      }
+  const checkAndResetHabitData = (habit: Habit): Habit => {
+    const yesterday = getISODateString(new Date(Date.now() - 86400000));
+    let updatedHabit = { ...habit };
+    
+    // Reset daily progress if last tracked date is not today
+    if (updatedHabit.lastTrackedDate !== today) {
+        updatedHabit.completedToday = false;
+        if (updatedHabit.trackingType === 'checkbox') updatedHabit.currentCount = 0;
+        if (updatedHabit.trackingType === 'time') updatedHabit.totalTimeLogged = 0;
     }
-    return habit;
+
+    // Reset streak if the last completed day wasn't yesterday or today
+    const lastCompletedDate = updatedHabit.completionHistory[updatedHabit.completionHistory.length - 1];
+    if (lastCompletedDate && lastCompletedDate !== today && lastCompletedDate !== yesterday) {
+      updatedHabit.streak = 0;
+    } else if (!lastCompletedDate) {
+      updatedHabit.streak = 0;
+    }
+
+    return updatedHabit;
   };
 
-  // Load habits from local storage on initial mount
   useEffect(() => {
     const storedHabits = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (storedHabits) {
       const parsedHabits = JSON.parse(storedHabits) as Habit[];
-      setHabits(parsedHabits.map(resetHabitProgressIfNewDay));
+      setHabits(parsedHabits.map(checkAndResetHabitData));
     }
   }, []);
 
-  // Save habits to local storage whenever they change
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(habits));
   }, [habits]);
@@ -56,26 +70,14 @@ const HabitsModule: React.FC = () => {
     setEditingHabit(habit);
     setHabitName(habit.name);
     setHabitTrackingType(habit.trackingType);
-    if (habit.trackingType === 'checkbox') {
-      setTargetCount(habit.targetCount || 1);
-    } else {
-      setTargetTime(habit.targetTime || 15);
-    }
+    if (habit.trackingType === 'checkbox') setTargetCount(habit.targetCount || 1);
+    else setTargetTime(habit.targetTime || 15);
     setShowForm(true);
   };
 
   const handleDeleteHabit = (id: string) => {
     if (window.confirm('Are you sure you want to delete this habit?')) {
-      console.log('HabitsModule: Attempting to delete habit with ID:', id);
-      setHabits((prevHabits) => {
-        console.log('HabitsModule: Previous habits list:', prevHabits);
-        const newList = prevHabits.filter((habit) => String(habit.id) !== String(id));
-        console.log('HabitsModule: New habits list after filter (should not contain deleted item):', newList);
-        console.log('HabitsModule: Calling setHabits with new list of length:', newList.length);
-        return newList;
-      });
-    } else {
-      console.log('HabitsModule: Deletion cancelled.');
+      setHabits(prev => prev.filter(habit => habit.id !== id));
     }
   };
 
@@ -84,97 +86,90 @@ const HabitsModule: React.FC = () => {
     if (!habitName.trim()) return;
 
     const baseHabit = {
-      id: editingHabit ? editingHabit.id : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: habitName.trim(),
-      trackingType: habitTrackingType,
-      lastTrackedDate: today,
-      completedToday: false,
+        name: habitName.trim(),
+        trackingType: habitTrackingType,
+        lastTrackedDate: today,
+        // Preserve existing streak and history if editing
+        streak: editingHabit?.streak || 0,
+        completionHistory: editingHabit?.completionHistory || [],
     };
 
     let newOrUpdatedHabit: Habit;
     if (habitTrackingType === 'checkbox') {
-      newOrUpdatedHabit = {
-        ...baseHabit,
-        currentCount: editingHabit?.id === baseHabit.id && editingHabit.trackingType === 'checkbox' ? editingHabit.currentCount : 0,
-        targetCount: targetCount,
-        completedToday: editingHabit?.id === baseHabit.id && editingHabit.trackingType === 'checkbox' ? (editingHabit.currentCount || 0) >= targetCount : false,
-      };
+        newOrUpdatedHabit = {
+            ...editingHabit,
+            ...baseHabit,
+            id: editingHabit?.id || Date.now().toString(),
+            targetCount,
+        };
     } else { // 'time'
-      newOrUpdatedHabit = {
-        ...baseHabit,
-        totalTimeLogged: editingHabit?.id === baseHabit.id && editingHabit.trackingType === 'time' ? editingHabit.totalTimeLogged : 0,
-        targetTime: targetTime,
-        completedToday: editingHabit?.id === baseHabit.id && editingHabit.trackingType === 'time' ? (editingHabit.totalTimeLogged || 0) >= targetTime : false,
-      };
+        newOrUpdatedHabit = {
+            ...editingHabit,
+            ...baseHabit,
+            id: editingHabit?.id || Date.now().toString(),
+            targetTime,
+        };
+    }
+    
+    // Reset progress if tracking type changed
+    if (editingHabit && editingHabit.trackingType !== newOrUpdatedHabit.trackingType) {
+        newOrUpdatedHabit.completedToday = false;
+        newOrUpdatedHabit.currentCount = 0;
+        newOrUpdatedHabit.totalTimeLogged = 0;
     }
 
     if (editingHabit) {
-      setHabits(
-        habits.map((habit) =>
-          habit.id === editingHabit.id ? newOrUpdatedHabit : habit
-        )
-      );
+        setHabits(habits.map(h => (h.id === editingHabit.id ? newOrUpdatedHabit : h)));
     } else {
-      setHabits([...habits, newOrUpdatedHabit]);
+        setHabits([...habits, newOrUpdatedHabit]);
     }
-
     setShowForm(false);
-    setEditingHabit(null);
-    setHabitName('');
-    setHabitTrackingType('checkbox');
-    setTargetCount(1);
-    setTargetTime(15);
-    setTimeInput('');
+  };
+  
+  const handleCancel = () => setShowForm(false);
+
+  const updateHabitProgress = (id: string, isComplete: boolean, newProgress: Partial<Habit>) => {
+      setHabits(habits.map(h => {
+          if (h.id !== id) return h;
+
+          let updatedHabit = { ...h, ...newProgress, lastTrackedDate: today, completedToday: isComplete };
+          const yesterday = getISODateString(new Date(Date.now() - 86400000));
+          
+          if (isComplete && !h.completionHistory.includes(today)) {
+              updatedHabit.completionHistory = [...h.completionHistory, today];
+              if (h.completionHistory.includes(yesterday)) {
+                  updatedHabit.streak = h.streak + 1;
+              } else {
+                  updatedHabit.streak = 1;
+              }
+          }
+          return updatedHabit;
+      }));
   };
 
-  const handleCancel = () => {
-    setShowForm(false);
-    setEditingHabit(null);
-    setHabitName('');
-    setHabitTrackingType('checkbox');
-    setTargetCount(1);
-    setTargetTime(15);
-    setTimeInput('');
-  };
+  const handleTrackCheckboxHabit = (id: string, increment: boolean) => {
+    const habit = habits.find(h => h.id === id);
+    if (!habit || habit.trackingType !== 'checkbox') return;
 
-  const handleTrackCheckboxHabit = (id: string) => {
-    setHabits(
-      habits.map((habit) => {
-        if (habit.id === id && habit.trackingType === 'checkbox') {
-          const updatedHabit = resetHabitProgressIfNewDay(habit);
-          const newCount = Math.min((updatedHabit.currentCount || 0) + 1, updatedHabit.targetCount || 1); // Cap at targetCount
-          return {
-            ...updatedHabit,
-            currentCount: newCount,
-            completedToday: newCount >= (updatedHabit.targetCount || 1),
-            lastTrackedDate: today,
-          };
-        }
-        return habit;
-      })
-    );
+    const currentCount = habit.currentCount || 0;
+    const newCount = increment ? Math.min(currentCount + 1, habit.targetCount || 1) : Math.max(0, currentCount - 1);
+    const isComplete = newCount >= (habit.targetCount || 1);
+    
+    updateHabitProgress(id, isComplete, { currentCount: newCount });
   };
-
+  
   const handleLogTimeForHabit = (id: string) => {
     const timeToLog = parseInt(timeInput, 10);
     if (isNaN(timeToLog) || timeToLog <= 0) return;
+    
+    const habit = habits.find(h => h.id === id);
+    if (!habit || habit.trackingType !== 'time') return;
+    
+    const newTotalTime = (habit.totalTimeLogged || 0) + timeToLog;
+    const isComplete = newTotalTime >= (habit.targetTime || 15);
 
-    setHabits(
-      habits.map((habit) => {
-        if (habit.id === id && habit.trackingType === 'time') {
-          const updatedHabit = resetHabitProgressIfNewDay(habit);
-          const newTotalTime = (updatedHabit.totalTimeLogged || 0) + timeToLog;
-          return {
-            ...updatedHabit,
-            totalTimeLogged: newTotalTime,
-            completedToday: newTotalTime >= (updatedHabit.targetTime || 15),
-            lastTrackedDate: today,
-          };
-        }
-        return habit;
-      })
-    );
-    setTimeInput(''); // Clear input after logging
+    updateHabitProgress(id, isComplete, { totalTimeLogged: newTotalTime });
+    setTimeInput('');
   };
 
   if (showForm) {
@@ -241,7 +236,7 @@ const HabitsModule: React.FC = () => {
               />
             </div>
           )}
-          <div className="flex justify-end space-x-3">
+           <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-slate-700/50">
             <button
               type="button"
               onClick={handleCancel}
@@ -251,7 +246,7 @@ const HabitsModule: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200"
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
             >
               {editingHabit ? 'Update Habit' : 'Add Habit'}
             </button>
@@ -262,115 +257,77 @@ const HabitsModule: React.FC = () => {
   }
 
   return (
+    <>
     <Module title="Daily Habits" icon={<HeartIcon />}>
       {habits.length === 0 ? (
-        <p className="text-gray-400 text-center py-4">No habits set up yet. Start building good routines!</p>
+        <p className="text-gray-400 text-center py-4">No habits set up yet. Start by creating a new one!</p>
       ) : (
-        <ul className="space-y-3">
-          {habits.map((habit) => {
-            const currentHabit = resetHabitProgressIfNewDay(habit);
-            const isCompleted = currentHabit.completedToday;
-            const progressText =
-              currentHabit.trackingType === 'checkbox'
-                ? `${currentHabit.currentCount || 0}/${currentHabit.targetCount || 1}`
-                : `${currentHabit.totalTimeLogged || 0}/${currentHabit.targetTime || 15} min`;
+        <ul className="space-y-4">
+          {habits.map(habit => (
+            <li key={habit.id} className="bg-slate-700/30 p-4 rounded-lg group">
+              <div className="flex justify-between items-start mb-3">
+                <span className={`font-semibold text-lg ${habit.completedToday ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{habit.name}</span>
+                <div className="flex items-center text-orange-400">
+                  <FireIcon />
+                  <span className="ml-1 font-bold">{habit.streak}</span>
+                </div>
+              </div>
 
-            return (
-              <li
-                key={currentHabit.id}
-                className="flex flex-col group bg-slate-800/40 backdrop-blur-md border border-slate-700/60 rounded-xl shadow-lg p-4 mb-3 transform transition-all duration-300 hover:scale-[1.01] hover:bg-slate-700/50"
-              >
-                <div className="flex items-center w-full">
-                  <div
-                    className={`w-6 h-6 mr-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                      isCompleted ? 'bg-green-500 border-green-500' : 'border-gray-500 group-hover:border-pink-500'
-                    }`}
-                  >
-                    {isCompleted && <svg className="w-full h-full text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+              {/* Progress Bar */}
+              {(() => {
+                let progress = 0;
+                if (habit.trackingType === 'checkbox' && habit.targetCount) {
+                  progress = ((habit.currentCount || 0) / habit.targetCount) * 100;
+                } else if (habit.trackingType === 'time' && habit.targetTime) {
+                  progress = ((habit.totalTimeLogged || 0) / habit.targetTime) * 100;
+                }
+                return (
+                  <div className="w-full bg-slate-700/80 rounded-full h-2 my-3">
+                    <div className="bg-gradient-to-r from-pink-500 to-purple-500 h-2 rounded-full transition-all duration-500 ease-out" style={{ width: `${Math.min(progress, 100)}%` }}></div>
                   </div>
-                  <div className="flex-1 overflow-hidden">
-                    <span className={`block ${isCompleted ? 'line-through text-gray-500' : 'text-white'}`}>
-                      {currentHabit.name}
-                    </span>
-                    {currentHabit.trackingType === 'time' && (
-                      <span className={`block text-xs mt-0.5 ${isCompleted ? 'text-gray-500' : 'text-gray-300'}`}>
-                        Today's Progress: {progressText}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
-                    <button
-                      onClick={() => handleEditHabit(currentHabit)}
-                      className="text-gray-300 hover:text-purple-400 transition-colors duration-200 p-2 rounded-full hover:bg-slate-700/80"
-                      aria-label={`Edit habit ${currentHabit.name}`}
-                    >
-                      <PencilIcon />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteHabit(currentHabit.id)} // Direct delete button
-                      className="text-gray-400 hover:text-red-400 transition-colors duration-200 p-2 rounded-full hover:bg-slate-700/80"
-                      aria-label={`Delete habit ${currentHabit.name}`}
-                    >
-                      <TrashIcon />
-                    </button>
+                );
+              })()}
+
+              {/* Interaction Area */}
+              {habit.trackingType === 'checkbox' && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400">Progress: {habit.currentCount || 0} / {habit.targetCount}</span>
+                  <div className="flex items-center space-x-2">
+                    <button onClick={() => handleTrackCheckboxHabit(habit.id, false)} className="p-2 rounded-full hover:bg-slate-600/50"><MinusCircleIcon /></button>
+                    <button onClick={() => handleTrackCheckboxHabit(habit.id, true)} className="p-2 rounded-full hover:bg-slate-600/50"><PlusCircleIcon /></button>
                   </div>
                 </div>
-                {currentHabit.trackingType === 'checkbox' && (
-                  <div className="mt-3 flex justify-between items-center pl-10 pr-4"> {/* Adjusted pl to align with icons */}
-                    <div className="flex items-center gap-1 flex-wrap"> {/* Added gap-1 for spacing */}
-                      {Array.from({ length: currentHabit.targetCount || 1 }).map((_, i) => (
-                        <div
-                          key={i}
-                          onClick={() => handleTrackCheckboxHabit(currentHabit.id)}
-                          className={`w-5 h-5 rounded-md border cursor-pointer transition-all duration-200 ${
-                            i < (currentHabit.currentCount || 0)
-                              ? 'bg-green-500 border-green-500'
-                              : 'border-gray-500 hover:bg-slate-600'
-                          }`}
-                          aria-label={`Mark completion ${i + 1} for ${currentHabit.name}`}
-                        ></div>
-                      ))}
-                    </div>
-                    {!isCompleted && (
-                      <button
-                        onClick={() => handleTrackCheckboxHabit(currentHabit.id)}
-                        className="bg-pink-600/80 hover:bg-pink-700 text-white font-bold w-8 h-8 rounded-full text-lg flex items-center justify-center transition-colors duration-200"
-                        aria-label={`Increment ${currentHabit.name}`}
-                      >
-                        +
-                      </button>
-                    )}
-                  </div>
-                )}
-                {currentHabit.trackingType === 'time' && !isCompleted && (
-                  <div className="mt-3 flex justify-end items-center space-x-2">
+              )}
+              {habit.trackingType === 'time' && (
+                <div>
+                  <p className="text-gray-400 mb-2">Progress: {habit.totalTimeLogged || 0} / {habit.targetTime} min</p>
+                  <div className="flex space-x-2">
                     <input
                       type="number"
                       value={timeInput}
-                      onChange={(e) => setTimeInput(e.target.value)}
-                      placeholder="min"
-                      min="1"
-                      className="w-28 p-2 rounded-lg bg-slate-700/70 border border-slate-600 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 text-gray-100 placeholder-gray-400 text-base"
-                      aria-label={`Time to log for ${currentHabit.name}`}
+                      onChange={e => setTimeInput(e.target.value)}
+                      placeholder="Log mins"
+                      className="w-full p-2 rounded-lg bg-slate-800/70 border border-slate-700 focus:ring-pink-500 focus:border-pink-500 text-gray-100 placeholder-gray-500 text-sm"
                     />
-                    <button
-                      onClick={() => handleLogTimeForHabit(currentHabit.id)}
-                      className="bg-pink-600/80 hover:bg-pink-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors duration-200"
-                      aria-label={`Log time for ${currentHabit.name}`}
-                    >
-                      Log Time
-                    </button>
+                    <button onClick={() => handleLogTimeForHabit(habit.id)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 text-sm">Log</button>
                   </div>
-                )}
-              </li>
-            );
-          })}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-1 mt-3 pt-3 border-t border-slate-700/50">
+                <button onClick={() => setViewingHistoryForHabit(habit)} className="text-gray-400 hover:text-purple-400 p-2 rounded-full hover:bg-slate-600/50"><CalendarDaysIcon /></button>
+                <button onClick={() => handleEditHabit(habit)} className="text-gray-400 hover:text-blue-400 p-2 rounded-full hover:bg-slate-600/50"><PencilIcon /></button>
+                <button onClick={() => handleDeleteHabit(habit.id)} className="text-gray-400 hover:text-red-400 p-2 rounded-full hover:bg-slate-600/50"><TrashIcon /></button>
+              </div>
+            </li>
+          ))}
         </ul>
       )}
       <div className="mt-6 pt-4 border-t border-slate-700/50">
         <button
           onClick={handleCreateNewHabit}
-          className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center text-lg"
+          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
@@ -379,6 +336,13 @@ const HabitsModule: React.FC = () => {
         </button>
       </div>
     </Module>
+    {viewingHistoryForHabit && (
+        <HabitHistoryCalendarModal 
+            habit={viewingHistoryForHabit}
+            onClose={() => setViewingHistoryForHabit(null)}
+        />
+    )}
+    </>
   );
 };
 

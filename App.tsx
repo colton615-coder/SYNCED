@@ -11,6 +11,7 @@ import JournalModule from './components/journal/JournalModule';
 import EducationModule from './components/education/EducationModule';
 import BottomNavBar from './components/navigation/BottomNavBar';
 import ActiveWorkoutSession from './components/workouts/ActiveWorkoutSession'; // Import new component
+import WorkoutHistory from './components/workouts/WorkoutHistory'; // Import workout history component
 import { ModuleType, WorkoutSession } from './types';
 
 const App: React.FC = () => {
@@ -44,6 +45,8 @@ const App: React.FC = () => {
             setActiveSession={setActiveSession}
           />
         );
+      case 'workoutHistory':
+        return <WorkoutHistory setActiveModule={setActiveModule} />;
       case 'projects':
         return <ProjectsModule />;
       case 'shopping':
@@ -78,6 +81,20 @@ const App: React.FC = () => {
         .animation-delay-2000 { animation-delay: 2s; }
         .animation-delay-4000 { animation-delay: 4s; }
         .animation-delay-6000 { animation-delay: 6s; }
+
+        @keyframes slide-in-fade {
+          0% {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-slide-in-fade {
+          animation: slide-in-fade 0.5s ease-out forwards;
+        }
       `}</style>
       
       <main className={`relative z-10 flex flex-col items-center w-full flex-grow ${activeSession ? 'p-0' : 'p-4 md:p-6 pb-28'}`}>

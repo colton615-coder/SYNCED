@@ -8,7 +8,8 @@ export type ModuleType =
   | 'shopping'
   | 'journal'
   | 'education'
-  | 'activeWorkout'; // New module type for active workout session
+  | 'activeWorkout'
+  | 'workoutHistory'; // New module type for workout history
 
 export type Priority = 'low' | 'medium' | 'high';
 
@@ -86,6 +87,8 @@ export interface Habit {
   targetTime?: number; // Daily target (e.g., 15 minutes) (for time type)
   lastTrackedDate?: string; // YYYY-MM-DD to track daily progress reset
   completedToday?: boolean; // Overall completion for the day
+  streak: number; // Current consecutive day streak
+  completionHistory: string[]; // Array of 'YYYY-MM-DD' strings for completed days
 }
 
 export interface CalendarEvent {

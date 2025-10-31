@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useReducer } from 'react';
 import Module from '../common/Module';
 import { mockExercises, mockWorkoutSessions } from '../../data/mockData';
@@ -694,7 +693,7 @@ const WorkoutsModule: React.FC<WorkoutsModuleProps> = ({ setActiveModule, setAct
   // Sub-component for Module Header Content
   const WorkoutsHeaderContent = (
     <button
-      onClick={() => setActiveModule('activeWorkout')} // Navigate to a history/logs view
+      onClick={() => setActiveModule('workoutHistory')} // Corrected navigation
       className="bg-slate-700/50 hover:bg-slate-600/70 text-gray-300 text-sm font-medium px-3 py-1 rounded-full transition-colors duration-200"
       aria-label="View workout history"
     >

@@ -4,6 +4,7 @@ import Module from '../common/Module';
 import { BookOpenIcon, SparklesIcon, PlusCircleIcon, ChevronLeftIcon } from '../common/Icons';
 import { JournalEntry } from '../../types';
 import { dailyJournalPrompts } from '../../data/journalPrompts';
+import JournalAnalysisModal from './JournalAnalysisModal';
 
 const LOCAL_STORAGE_KEY_ENTRIES = 'lifesyncd_journal_entries';
 const LOCAL_STORAGE_KEY_DISMISS = 'lifesyncd_journal_dismiss_date';
@@ -163,6 +164,7 @@ const JournalModule: React.FC = () => {
   const [isDismissed, setIsDismissed] = useState(false);
   const [view, setView] = useState<JournalView>('LIST');
   const [activeEntry, setActiveEntry] = useState<Partial<JournalEntry> | null>(null);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -224,6 +226,10 @@ const JournalModule: React.FC = () => {
     setView('ENTRY');
   };
 
+  const handleAnalyzeEntries = () => {
+    setShowAnalysisModal(true);
+  };
+
   if (view === 'ENTRY' && activeEntry) {
     return (
       <JournalEntryView 
@@ -234,47 +240,70 @@ const JournalModule: React.FC = () => {
     );
   }
 
+  const sortedEntries = journalEntries.slice().sort((a, b) => b.date.localeCompare(a.date));
+
   // LIST VIEW
   return (
-    <Module title="My Journal" icon={<BookOpenIcon />}>
-      {/* Daily Prompt Card */}
-      {!hasAnsweredPromptToday && !isDismissed && (
-        <div className="bg-slate-700/40 backdrop-blur-md border border-slate-600/60 rounded-xl shadow-lg p-4 mb-6 relative">
-          <button onClick={handleDismiss} className="absolute top-2 right-2 text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-600/50">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-          <h3 className="font-semibold text-purple-300 mb-2">Daily Insight Prompt</h3>
-          <p className="text-gray-200 mb-4">"{dailyPrompt}"</p>
-          <button onClick={handleStartPromptEntry} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-            Write Your Response
+    <>
+      <Module title="My Journal" icon={<BookOpenIcon />}>
+        {/* Daily Prompt Card */}
+        {!hasAnsweredPromptToday && !isDismissed && (
+          <div className="bg-slate-700/40 backdrop-blur-md border border-slate-600/60 rounded-xl shadow-lg p-4 mb-6 relative">
+            <button onClick={handleDismiss} className="absolute top-2 right-2 text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-600/50">
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            <h3 className="font-semibold text-purple-300 mb-2">Daily Insight Prompt</h3>
+            <p className="text-gray-200 mb-4">"{dailyPrompt}"</p>
+            <button onClick={handleStartPromptEntry} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+              Write Your Response
+            </button>
+          </div>
+        )}
+
+        {/* AI Analysis Button */}
+        {sortedEntries.length > 5 && (
+            <div className="mb-6">
+                 <button
+                    onClick={handleAnalyzeEntries}
+                    className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center"
+                  >
+                    <SparklesIcon className="h-5 w-5 mr-2" />
+                    Analyze Recent Entries
+                  </button>
+            </div>
+        )}
+
+        {/* Entries List */}
+        <div className="space-y-3">
+          {sortedEntries.length === 0 ? (
+            <p className="text-gray-400 text-center py-4">Your journal is empty. Write your first entry!</p>
+          ) : (
+            sortedEntries.map(entry => (
+              <button key={entry.id} onClick={() => handleSelectEntry(entry)} className="w-full text-left block bg-slate-800/40 backdrop-blur-md border border-slate-700/60 rounded-xl shadow-lg p-4 transition-all duration-300 hover:scale-[1.01] hover:bg-slate-700/50">
+                <p className="text-sm text-gray-400 mb-1">{new Date(entry.date + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <h4 className="font-bold text-lg text-white mb-2 truncate">{entry.title || entry.prompt}</h4>
+                <p className="text-sm text-gray-300 line-clamp-2">{entry.snippet}</p>
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="mt-6 pt-4 border-t border-slate-700/50">
+          <button
+            onClick={handleStartFreeformEntry}
+            className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center text-lg"
+          >
+            <PlusCircleIcon className="h-5 w-5 mr-2" /> Create New Freeform Entry
           </button>
         </div>
+      </Module>
+      {showAnalysisModal && (
+        <JournalAnalysisModal
+          onClose={() => setShowAnalysisModal(false)}
+          entriesToAnalyze={sortedEntries.slice(0, 15)}
+        />
       )}
-
-      {/* Entries List */}
-      <div className="space-y-3">
-        {journalEntries.length === 0 ? (
-          <p className="text-gray-400 text-center py-4">Your journal is empty. Write your first entry!</p>
-        ) : (
-          journalEntries.slice().reverse().map(entry => (
-            <button key={entry.id} onClick={() => handleSelectEntry(entry)} className="w-full text-left block bg-slate-800/40 backdrop-blur-md border border-slate-700/60 rounded-xl shadow-lg p-4 transition-all duration-300 hover:scale-[1.01] hover:bg-slate-700/50">
-              <p className="text-sm text-gray-400 mb-1">{new Date(entry.date + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-              <h4 className="font-bold text-lg text-white mb-2 truncate">{entry.title || entry.prompt}</h4>
-              <p className="text-sm text-gray-300 line-clamp-2">{entry.snippet}</p>
-            </button>
-          ))
-        )}
-      </div>
-
-      <div className="mt-6 pt-4 border-t border-slate-700/50">
-        <button
-          onClick={handleStartFreeformEntry}
-          className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center text-lg"
-        >
-          <PlusCircleIcon className="h-5 w-5 mr-2" /> Create New Freeform Entry
-        </button>
-      </div>
-    </Module>
+    </>
   );
 };
 
